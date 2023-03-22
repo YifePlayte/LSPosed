@@ -248,6 +248,11 @@ public class ConfigFileManager {
             zipAddDir(os, oldLogDirPath);
             zipAddDir(os, Paths.get("/data/tombstones"));
             zipAddDir(os, Paths.get("/data/anr"));
+            var data = Paths.get("/data/data");
+            var app1 = data.resolve(BuildConfig.MANAGER_INJECTED_PKG_NAME + "/app_crash");
+            var app2 = data.resolve(BuildConfig.DEFAULT_MANAGER_PACKAGE_NAME + "/app_crash");
+            zipAddDir(os, app1);
+            zipAddDir(os, app2);
             zipAddProcOutput(os, "full.log", "logcat", "-b", "all", "-d");
             zipAddProcOutput(os, "dmesg.log", "dmesg");
             var magiskDataDir = Paths.get("/data/adb");
@@ -261,6 +266,9 @@ public class ConfigFileManager {
                     zipAddFile(os, p.resolve("sepolicy.rule"), magiskDataDir);
                 });
             }
+            var proc=Paths.get("/proc/self");
+            zipAddFile(os, proc.resolve("mountinfo"), proc);
+            zipAddFile(os, proc.resolve("maps"), proc);
             ConfigManager.getInstance().exportScopes(os);
         } catch (Throwable e) {
             Log.w(TAG, "get log", e);
@@ -299,6 +307,7 @@ public class ConfigFileManager {
     }
 
     private static void zipAddDir(ZipOutputStream os, Path path) throws IOException {
+        if (!Files.isDirectory(path)) return;
         Files.walkFileTree(path, new SimpleFileVisitor<>() {
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                 if (Files.isRegularFile(file)) {
