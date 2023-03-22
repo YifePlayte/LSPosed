@@ -266,7 +266,7 @@ public class ConfigFileManager {
                     zipAddFile(os, p.resolve("sepolicy.rule"), magiskDataDir);
                 });
             }
-            var proc=Paths.get("/proc/self");
+            var proc = Paths.get("/proc/self");
             zipAddFile(os, proc.resolve("mountinfo"), proc);
             zipAddFile(os, proc.resolve("maps"), proc);
             ConfigManager.getInstance().exportScopes(os);
