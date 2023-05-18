@@ -2,6 +2,7 @@ package org.lsposed.lspd.util;
 
 import static de.robv.android.xposed.XposedBridge.TAG;
 
+import android.annotation.SuppressLint;
 import android.os.Build;
 import android.os.SharedMemory;
 import android.system.ErrnoException;
@@ -14,6 +15,7 @@ import androidx.annotation.RequiresApi;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -28,6 +30,29 @@ import java.util.zip.ZipEntry;
 import hidden.ByteBufferDexClassLoader;
 import sun.misc.CompoundEnumeration;
 
+final class BridgeClassLoader extends ByteBufferDexClassLoader {
+    LspModuleClassLoader lspModuleClassLoader;
+    BridgeClassLoader(LspModuleClassLoader lspModuleClassLoader) {
+        super(new ByteBuffer[0], null);
+        this.lspModuleClassLoader = lspModuleClassLoader;
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    BridgeClassLoader(LspModuleClassLoader lspModuleClassLoader, String librarySearchPath) {
+        super(new ByteBuffer[0], librarySearchPath, null);
+        this.lspModuleClassLoader = lspModuleClassLoader;
+    }
+
+    @Override
+    public String getLdLibraryPath() {
+        return lspModuleClassLoader.getLdLibraryPath();
+    }
+
+    @Override
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        return lspModuleClassLoader.loadClass(name);
+    }
+}
 @SuppressWarnings("ConstantConditions")
 public final class LspModuleClassLoader extends ByteBufferDexClassLoader {
     private static final String zipSeparator = "!/";
@@ -35,6 +60,8 @@ public final class LspModuleClassLoader extends ByteBufferDexClassLoader {
             splitPaths(System.getProperty("java.library.path"));
     private final String apk;
     private final List<File> nativeLibraryDirs = new ArrayList<>();
+
+    private BridgeClassLoader bridgeClassLoader = null;
 
     private static List<File> splitPaths(String searchPath) {
         var result = new ArrayList<File>();
@@ -178,6 +205,24 @@ public final class LspModuleClassLoader extends ByteBufferDexClassLoader {
     public String toString() {
         if (apk == null) return "LspModuleClassLoader[instantiating]";
         return "LspModuleClassLoader[module=" + apk + ", " + super.toString() + "]";
+    }
+
+    public void loadLibrary(String libname) {
+        if (bridgeClassLoader == null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                bridgeClassLoader = new BridgeClassLoader(this, null);
+            } else {
+                bridgeClassLoader = new BridgeClassLoader(this);
+            }
+        }
+        try {
+            @SuppressLint("BlockedPrivateApi")
+            var method = Runtime.class.getDeclaredMethod("loadLibrary0", ClassLoader.class, Class.class, String.class);
+            method.setAccessible(true);
+            method.invoke(null, bridgeClassLoader, null, libname);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            throw new UnsatisfiedLinkError(e.getMessage());
+        }
     }
 
     public static ClassLoader loadApk(String apk,
